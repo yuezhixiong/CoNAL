@@ -174,3 +174,64 @@ class CoNAL(Nyu):
                              self.named_parameters())
         for name, param in name_params:
             yield param
+
+
+class Retrain(Nyu):
+    def __init__(self, group=[[], [], [], [[2]], [], [0,1]]):
+        super().__init__()
+        
+        self.group_layer = group
+        self.group_list = [l for l in group if l]
+        group_num = len(self.group_list)
+        print('{} branchs:'.format(group_num), group)
+
+        self.backbone = ResnetDilated(resnet.__dict__['resnet50'](pretrained=True))
+
+        self.task_conv = nn.Sequential(self.backbone.conv1, self.backbone.bn1, self.backbone.relu1,
+            self.backbone.maxpool)        
+        self.backbones = nn.ModuleList([ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)) for _ in group[0]])
+        self.sl0 = nn.ModuleList([nn.Sequential(
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer1, 
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer2,
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer3, 
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer4) for _ in group[1]])
+        self.sl1 = nn.ModuleList([nn.Sequential(
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer2,
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer3, 
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer4) for _ in group[2]])
+        self.sl2 = nn.ModuleList([nn.Sequential(
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer3, 
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer4) for _ in group[3]])
+        self.sl3 = nn.ModuleList([nn.Sequential(
+            ResnetDilated(resnet.__dict__['resnet50'](pretrained=True)).layer4) for _ in group[4]])
+        self.layer_list = [self.task_conv, self.backbone.layer1, self.backbone.layer2, 
+            self.backbone.layer3, self.backbone.layer4]
+        self.sl_list = [self.backbones, self.sl0, self.sl1, self.sl2, self.sl3]
+
+        self.decoders = nn.ModuleList([DeepLabHead(2048, self.num_out_channels[t]) for t in self.tasks])
+
+    def forward(self, x):
+        img_size  = x.size()[-2:]
+        t_outs = [0] * self.task_num
+        for i,layer in enumerate(self.layer_list):
+            for tn in range(self.task_num):
+                for gn,group in enumerate(self.group_layer[i]):
+                    if tn in group:
+                        t_outs[tn] = self.sl_list[i][gn](x)
+            x = layer(x)
+
+        for tn in range(self.task_num):
+            if tn in self.group_layer[5]:
+                t_outs[tn] = x
+
+        out = [0 for _ in self.tasks]
+        for i, t in enumerate(self.tasks):
+            out[i] = F.interpolate(self.decoders[i](t_outs[i]), img_size, mode='bilinear', align_corners=True)
+            if t == 'segmentation':
+                out[i] = F.log_softmax(out[i], dim=1)
+            if t == 'normal':
+                out[i] = out[i] / torch.norm(out[i], p=2, dim=1, keepdim=True)
+        return out
+
+    def predict(self, x):
+        return self.forward(x)
