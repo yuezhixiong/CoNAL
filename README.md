@@ -27,20 +27,27 @@ Please install following python packages:
 - torchvision
 - tensorboard
 ```
+or install from requirements:
+```
+pip install -r requirements.txt
+```
 
 ## Example Usage
 
 Learn MTL architecture in NYUv2 dataset:
 ```
-cd CoNAL
-python train.py --model CoNAL
+python CoNAL/train.py
+```
+Then retrain the learned architecture:
+```
+python CoNAL/retrain.py
 ```
 
 ## Visualization
 We use tensorboard to visualize the architecture learning process
 ```
-tensorboard --logdir CoNAL/out
+tensorboard --logdir logs/logdir
 ```
-The learned architecture can be found in ```out/alpha_arrs.npy```
+The learned architecture can be found in ```logs/logdir/arch.json```
 
 ![method](./figures/figure1.jpg)

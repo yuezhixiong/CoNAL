@@ -87,15 +87,22 @@ class NYU(Dataset):
         return len(self.index_list)
 
 
-def get_loaders(train_dir, batch_size, num_workers=16, pin_memory=True):
-    train_ds = NYU(train_dir, 'train')
+def get_loaders(train_dir, batch_size, num_workers=16, pin_memory=True, stage='search'):
+    if stage == 'retrain':
+        trainval_ds = NYU(train_dir, 'trainval')
+        trainval_loader = DataLoader(trainval_ds, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
+                          shuffle=True, drop_last=True, prefetch_factor=2)
+        return trainval_loader
 
-    train_loader = DataLoader(train_ds, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
-                                shuffle=True, drop_last=True, prefetch_factor=2)
+    elif stage == 'search':
+        train_ds = NYU(train_dir, 'train')
 
-    val_ds = NYU(train_dir, 'val')
+        train_loader = DataLoader(train_ds, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
+                                    shuffle=True, drop_last=True, prefetch_factor=2)
 
-    val_loader = DataLoader(val_ds, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
-                            shuffle=False, drop_last=False, prefetch_factor=2)
+        val_ds = NYU(train_dir, 'val')
 
-    return train_loader, val_loader
+        val_loader = DataLoader(val_ds, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
+                                shuffle=True, drop_last=False, prefetch_factor=2)
+
+        return train_loader, val_loader

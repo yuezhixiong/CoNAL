@@ -1,10 +1,10 @@
-import torch, os
+import torch, time, os, json
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
-from model import CoNAL
+from model import CoNALArch
 from utils import *
 
 from tqdm import tqdm
@@ -16,49 +16,29 @@ LOG_DIR = 'logs'
 LOG_ON = True
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 NUM_EPOCHS = 10
 
 
-def search_fn(train_loader, val_loader, model, weight_optim, arch_optim, logdir):
+def train_fn(train_loader, model, weight_optim, logdir):
 
     writer = SummaryWriter(log_dir=logdir)
     scaler = torch.cuda.amp.GradScaler()
 
     num_batchs = len(train_loader)
     avg_cost = torch.zeros([num_batchs, 24])
-    alpha_arrs = []
 
     for epoch_idx in range(NUM_EPOCHS):
         cost = torch.zeros(24)
         model.train()
         train_iter = iter(train_loader)
-        val_iter = iter(val_loader)
 
         for batch_idx in tqdm(range(num_batchs)):
             train_data, train_label, train_depth, train_normal = next(train_iter)
             train_data, train_label = train_data.to(DEVICE), train_label.to(DEVICE)
             train_depth, train_normal = train_depth.to(DEVICE), train_normal.to(DEVICE)
 
-            try:
-                val_data, trainval_label, trainval_depth, trainval_normal = next(val_iter)
-            except StopIteration:
-                val_iter = iter(val_loader)
-                val_data, trainval_label, trainval_depth, trainval_normal = next(val_iter)
-            val_data, trainval_label = val_data.to(DEVICE), trainval_label.to(DEVICE)
-            trainval_depth, trainval_normal = trainval_depth.to(DEVICE), trainval_normal.to(DEVICE)
-
             with torch.cuda.amp.autocast():  # FP16
-                # phase 1. architecture step
-                # model.eval()
-                arch_optim.zero_grad()
-                trainval_pred = model(val_data)
-                arch_loss = loss_fn(trainval_pred[0], trainval_label, 'semantic') + loss_fn(trainval_pred[1], trainval_depth, 'depth') + loss_fn(trainval_pred[2], trainval_normal, 'normal')
-                scaler.scale(arch_loss).backward()
-                scaler.step(arch_optim)
-                scaler.update()
-
-                # phase 2: network step
                 weight_optim.zero_grad()
                 model.train()
                 train_pred = model(train_data)
@@ -97,15 +77,9 @@ def search_fn(train_loader, val_loader, model, weight_optim, arch_optim, logdir)
         writer.add_scalar('train/With22', avg_cost[epoch_idx, 10], epoch_idx)
         writer.add_scalar('train/With68', avg_cost[epoch_idx, 11], epoch_idx)
 
-        if isinstance(model.alpha, nn.ParameterList):
-            alpha_arr = np.concatenate([x.detach().cpu().numpy() for x in model.alpha], -1)
-        else:
-            alpha_arr = model.alpha.detach().cpu().numpy()
-        writer.add_text('alpha', np.array2string(alpha_arr), epoch_idx)
+        if epoch_idx%10 == 0:
+            torch.save(model.state_dict(), os.path.join(logdir, '{}_e{}.pth'.format('CoNAL', epoch_idx)))
 
-        alpha_arrs.append(alpha_arr)
-        np.save(os.path.join(logdir, 'alpha_arrs.npy'), np.array(alpha_arrs))
-    return alpha_arr
 
 
 def main():
@@ -116,27 +90,23 @@ def main():
         logdir = 'logs/debug'
 
     # prepare dataloaders
-    train_loader,  val_loader = get_loaders(TRAIN_DIR, BATCH_SIZE)
+    train_loader = get_loaders(TRAIN_DIR, BATCH_SIZE, stage='retrain')
+
+    # get arch from json file
+    arch = load_arch('CoNAL/arch.json')
 
     # prepare model
-    model = CoNAL().to(DEVICE)
+    model = CoNALArch(arch).to(DEVICE)
 
     # prepare optimizer
-    weight_optim = NOCLGrad(optim.Adam([{'params': model.private_parameters(), 'name':'private'},
-                            {'params': model.layer0_parameters(), 'name':'layer0'},
-                            {'params': model.layer1_parameters(), 'name':'layer1'},
-                            {'params': model.layer2_parameters(), 'name':'layer2'},
-                            {'params': model.layer3_parameters(), 'name':'layer3'},
-                            {'params': model.layer4_parameters(), 'name':'layer4'},
-                            ], lr=1e-4, weight_decay=1e-5))
-    arch_optim = optim.Adam(model.arch_parameters(), lr=5e-5, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=5e-5, weight_decay=1e-5)
 
+    # start training
+    train_fn(train_loader, model, optimizer, logdir)
 
-    # start searching
-    alpha_arr = search_fn(train_loader, val_loader, model, weight_optim, arch_optim, logdir)
+    # save model
+    torch.save(model.state_dict(), os.path.join(logdir, '{}_e{}.pth'.format('CoNAL', NUM_EPOCHS)))
 
-    # output architecture
-    output_arch(alpha_arr, logdir)
-
+    
 if __name__ == '__main__':
     main()

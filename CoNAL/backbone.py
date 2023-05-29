@@ -416,9 +416,13 @@ class NyuModel(nn.Module):
         self.bb_name = 'resnet50'
         self.dc_in_channel = 2048
         self.decoders = nn.ModuleList([DeepLabHead(2048, self.num_out_channels[t]) for t in self.tasks])
+        self.num_branch_points = 6
 
     def forward(self, x):
         return x
     
     def predict(self, x):
         return self.forward(x)
+    
+    def new_bb(self):
+        return ResnetDilated(self.bb_name)

@@ -150,13 +150,19 @@ class CoNAL(NyuModel):
             yield param
 
 
-class Retrain(NyuModel):
-    def __init__(self, group=[[], [], [], [[2]], [], [0,1]]):
+class CoNALArch(NyuModel):
+    def __init__(self, arch={}):
         super().__init__()
         
-        self.group_layer = group
-        self.group_list = [l for l in group if l]
-        group_num = len(self.group_list)
+        group = [[] for _ in range(self.num_branch_points)]
+        for i in range(self.task_num):
+            branch_point = arch[str(i)]
+            if branch_point == self.num_branch_points -1:
+                group[branch_point].append(i)
+            else:
+                group[branch_point].append([i])
+        self.group = group
+        group_num = len([l for l in group if l])
         print('{} branchs:'.format(group_num), group)
 
         self.backbone = ResnetDilated('resnet50')
@@ -187,13 +193,13 @@ class Retrain(NyuModel):
         t_outs = [0] * self.task_num
         for i,layer in enumerate(self.layer_list):
             for tn in range(self.task_num):
-                for gn,group in enumerate(self.group_layer[i]):
+                for gn,group in enumerate(self.group[i]):
                     if tn in group:
                         t_outs[tn] = self.sl_list[i][gn](x)
             x = layer(x)
 
         for tn in range(self.task_num):
-            if tn in self.group_layer[5]:
+            if tn in self.group[5]:
                 t_outs[tn] = x
 
         out = [0 for _ in self.tasks]
