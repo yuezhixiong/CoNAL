@@ -36,11 +36,11 @@ pip install -r requirements.txt
 
 Learn MTL architecture in NYUv2 dataset:
 ```
-python CoNAL/train.py
+python CoNAL/search.py
 ```
 Then retrain the learned architecture:
 ```
-python CoNAL/retrain.py
+python CoNAL/train.py
 ```
 
 ## Visualization
