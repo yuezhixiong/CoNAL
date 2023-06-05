@@ -1,4 +1,4 @@
-import torch, os, sys
+import torch, os, sys, shutil
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -82,27 +82,29 @@ def train_fn(train_loader, model, weight_optim, num_epochs, logdir):
 
 def main():
     # load model config
-    yaml_path = sys.argv[1] if sys.argv[1] is not None else 'models/hps.yaml'
+    yaml_path = 'models/hps.yml'
     config = yaml_load(yaml_path)
     batch_size = config['hyper']['batch_size']
     num_epochs = config['hyper']['num_epochs']
+    lr = config['hyper']['lr']
+    weight_decay = config['hyper']['weight_decay']
 
     # prepare dataloaders
     train_loader = get_loaders(TRAIN_DIR, batch_size, stage='retrain')
 
     # get arch from json file
-    arch_name = config['arch']['num_epochs']
-    arch_path = os.path.join('CoNAL', arch_name+'.json')
-    arch = load_arch(arch_path)
+    arch_name = config['arch']['name']
+    arch = config['arch']['branch_points']
 
     # prepare logger
     logdir = create_logdir(LOG_DIR, arch_name) if LOG_ON else 'logs/debug'
+    shutil.copy(yaml_path, logdir)
 
     # prepare model
     model = CoNALArch(arch).to(DEVICE)
 
     # prepare optimizer
-    optimizer = optim.Adam(model.parameters(), lr=5e-5, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # start training
     train_fn(train_loader, model, optimizer, num_epochs, logdir)

@@ -1,0 +1,13 @@
+arch:
+  name: hps
+  backbone: resnet50
+  branch_points:
+    '0': 5
+    '1': 5
+    '2': 5
+  
+hyper:
+  lr: 0.00005
+  batch_size: 8
+  num_epochs: 50
+  weight_decay: 0.00001
