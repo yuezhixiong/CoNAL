@@ -1,5 +1,5 @@
 import torch
-from backbone import NyuModel, ResnetDilated
+from .backbone import NyuModel
 import torch.nn.functional as F
 import torch.nn as nn
 
@@ -7,8 +7,7 @@ import torch.nn as nn
 class STL(NyuModel):
     def __init__(self):
         super().__init__()
-        self.backbones = nn.ModuleList([ResnetDilated('resnet50') for _ in self.tasks])
-        
+        self.backbones = nn.ModuleList([self.new_bb() for _ in self.tasks])
         
     def forward(self, x):
         img_size  = x.size()[-2:]
@@ -22,11 +21,12 @@ class STL(NyuModel):
                 out[i] = out[i] / torch.norm(out[i], p=2, dim=1, keepdim=True)
         return out
 
+
 class HPS(NyuModel):
     def __init__(self):
         super().__init__()
         
-        self.backbone = ResnetDilated('resnet50')
+        self.backbone = self.new_bb()
         
     def forward(self, x):
         img_size  = x.size()[-2:]
@@ -40,9 +40,6 @@ class HPS(NyuModel):
                 out[i] = out[i] / torch.norm(out[i], p=2, dim=1, keepdim=True)
         return out
     
-    def predict(self, x):
-        return self.forward(x)
-    
     def get_share_params(self):
         return self.backbone.parameters()
     
@@ -54,8 +51,8 @@ class CoNAL(NyuModel):
         alpha = torch.ones(self.task_num, 6)
         self.alpha = nn.Parameter(alpha)
 
-        self.backbone = ResnetDilated('resnet50')
-        self.backbones = nn.ModuleList([ResnetDilated('resnet50') for _ in self.tasks])
+        self.backbone = self.new_bb()
+        self.backbones = nn.ModuleList([self.new_bb() for _ in self.tasks])
 
         self.task_conv = nn.Sequential(self.backbone.conv1, self.backbone.bn1, self.backbone.relu1, self.backbone.maxpool)
         self.sl0 = nn.ModuleList([nn.Sequential(
@@ -90,9 +87,6 @@ class CoNAL(NyuModel):
             if t == 'normal':
                 out[i] = out[i] / torch.norm(out[i], p=2, dim=1, keepdim=True)
         return out
-
-    def predict(self, x):
-        return self.forward(x)
 
     def weight_parameters(self):
         for name, param in self.named_weight_parameters():
@@ -165,25 +159,25 @@ class CoNALArch(NyuModel):
         group_num = len([l for l in group if l])
         print('{} branchs:'.format(group_num), group)
 
-        self.backbone = ResnetDilated('resnet50')
+        self.backbone = self.new_bb()
 
         self.task_conv = nn.Sequential(self.backbone.conv1, self.backbone.bn1, self.backbone.relu1,
             self.backbone.maxpool)        
-        self.backbones = nn.ModuleList([ResnetDilated('resnet50') for _ in group[0]])
+        self.backbones = nn.ModuleList([self.new_bb() for _ in group[0]])
         self.sl0 = nn.ModuleList([nn.Sequential(
-            ResnetDilated('resnet50').layer1, 
-            ResnetDilated('resnet50').layer2,
-            ResnetDilated('resnet50').layer3, 
-            ResnetDilated('resnet50').layer4) for _ in group[1]])
+            self.new_bb().layer1, 
+            self.new_bb().layer2,
+            self.new_bb().layer3, 
+            self.new_bb().layer4) for _ in group[1]])
         self.sl1 = nn.ModuleList([nn.Sequential(
-            ResnetDilated('resnet50').layer2,
-            ResnetDilated('resnet50').layer3, 
-            ResnetDilated('resnet50').layer4) for _ in group[2]])
+            self.new_bb().layer2,
+            self.new_bb().layer3, 
+            self.new_bb().layer4) for _ in group[2]])
         self.sl2 = nn.ModuleList([nn.Sequential(
-            ResnetDilated('resnet50').layer3, 
-            ResnetDilated('resnet50').layer4) for _ in group[3]])
+            self.new_bb().layer3, 
+            self.new_bb().layer4) for _ in group[3]])
         self.sl3 = nn.ModuleList([nn.Sequential(
-            ResnetDilated('resnet50').layer4) for _ in group[4]])
+            self.new_bb().layer4) for _ in group[4]])
         self.layer_list = [self.task_conv, self.backbone.layer1, self.backbone.layer2, 
             self.backbone.layer3, self.backbone.layer4]
         self.sl_list = [self.backbones, self.sl0, self.sl1, self.sl2, self.sl3]
@@ -210,9 +204,6 @@ class CoNALArch(NyuModel):
             if t == 'normal':
                 out[i] = out[i] / torch.norm(out[i], p=2, dim=1, keepdim=True)
         return out
-
-    def predict(self, x):
-        return self.forward(x)
 
 
 def test():

@@ -422,7 +422,8 @@ class NyuModel(nn.Module):
         return x
     
     def predict(self, x):
-        return self.forward(x)
+        predicts = self.forward(x)
+        return dict(zip(self.tasks, predicts))
     
     def new_bb(self):
         return ResnetDilated(self.bb_name)

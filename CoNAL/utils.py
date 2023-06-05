@@ -2,6 +2,7 @@ import torch, time, os, copy, json
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import yaml
 
 
 class ConfMatrix(object):
@@ -249,38 +250,9 @@ def loss_fn(x_pred, x_output, task_type):
 
     return loss.to(device)
 
-def test(model, nyuv2_test_loader):
-    conf_mat = ConfMatrix(model.class_nb)
-    cost = torch.zeros(24)
-    avg_cost = torch.zeros(24)
-    model.eval()
-    with torch.no_grad():  # operations inside don't track history
-        test_dataset = iter(nyuv2_test_loader)
-        test_batch = len(nyuv2_test_loader)
-        for k in range(test_batch):
-            test_data, test_label, test_depth, test_normal = test_dataset.next()
-            test_data, test_label = test_data.cuda(non_blocking=True), test_label.long().cuda(non_blocking=True)
-            test_depth, test_normal = test_depth.cuda(non_blocking=True), test_normal.cuda(non_blocking=True)
-            test_pred = model.predict(test_data)
-            test_loss = [loss_fn(test_pred[0], test_label, 'semantic'),
-                         loss_fn(test_pred[1], test_depth, 'depth'),
-                         loss_fn(test_pred[2], test_normal, 'normal')]
 
-            conf_mat.update(test_pred[0].argmax(1).flatten(), test_label.flatten())
-
-            cost[12] = test_loss[0].item()
-            cost[15] = test_loss[1].item()
-            cost[16], cost[17] = depth_error(test_pred[1], test_depth)
-            cost[18] = test_loss[2].item()
-            cost[19], cost[20], cost[21], cost[22], cost[23] = normal_error(test_pred[2], test_normal)
-            avg_cost[12:] += cost[12:] / test_batch
-
-        # compute mIoU and acc
-        avg_cost[13], avg_cost[14] = conf_mat.get_metrics()
-    return avg_cost
-
-def create_logdir(LOG_DIR):
-    folder_name = time.strftime("_%Y_%m%d_%H%M")
+def create_logdir(LOG_DIR, arch_name=''):
+    folder_name = arch_name + time.strftime("_%Y_%m%d_%H%M")
     logdir = os.path.join(LOG_DIR, folder_name)
     os.makedirs(logdir, exist_ok=True)
     print('logging at ', logdir)
@@ -302,3 +274,9 @@ def load_arch(arch_file ='arch.json'):
     with open(arch_file) as f:
         arch = json.load(f)
     return arch
+
+
+def yaml_load(file='data.yaml'):
+    # Single-line safe yaml loading
+    with open(file, errors='ignore') as f:
+        return yaml.safe_load(f)
