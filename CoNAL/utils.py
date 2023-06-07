@@ -5,6 +5,12 @@ import numpy as np
 import yaml
 
 
+def size_model(model):
+    b = sum(p.numel() * p.element_size() for p in model.parameters() if p.requires_grad)
+    mb = b / 1024 / 1024
+    res = round(mb, 4)
+    return res
+
 class ConfMatrix(object):
     def __init__(self, num_classes):
         self.num_classes = num_classes
@@ -280,3 +286,12 @@ def yaml_load(file='data.yaml'):
     # Single-line safe yaml loading
     with open(file, errors='ignore') as f:
         return yaml.safe_load(f)
+    
+
+def find_files(directory, extension):
+    res = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith(extension):
+                res.append(os.path.join(root, file))
+    return res

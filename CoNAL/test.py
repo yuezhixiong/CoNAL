@@ -1,22 +1,25 @@
-import torch
+import torch, argparse
 from model import CoNALArch
 from dataset import get_loaders
 from utils import *
+from tqdm import tqdm
 
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def test(model, test_loader):
     conf_mat = ConfMatrix(model.class_nb)
     cost = torch.zeros(24)
     avg_cost = torch.zeros(24)
     model.eval()
-    with torch.no_grad():  # operations inside don't track history
+    with torch.no_grad():
         test_iter = iter(test_loader)
         test_batch = len(test_loader)
-        for k in range(test_batch):
+        for k in tqdm(range(test_batch)):
             test_data, test_label, test_depth, test_normal = next(test_iter)
             test_data, test_label = test_data.cuda(non_blocking=True), test_label.long().cuda(non_blocking=True)
             test_depth, test_normal = test_depth.cuda(non_blocking=True), test_normal.cuda(non_blocking=True)
-            test_pred = model.predict(test_data)
+            test_pred = model(test_data)
             test_loss = [loss_fn(test_pred[0], test_label, 'semantic'),
                          loss_fn(test_pred[1], test_depth, 'depth'),
                          loss_fn(test_pred[2], test_normal, 'normal')]
@@ -34,22 +37,21 @@ def test(model, test_loader):
         avg_cost[13], avg_cost[14] = conf_mat.get_metrics()
 
     task_metric = {}
-    task_metric["0"] = avg_cost[13:15]
-    task_metric["1"] = avg_cost[16:18]
-    task_metric["2"] = avg_cost[19:24]
+    task_metric["0"] = [round(x,6) for x in avg_cost[13:15].tolist()]
+    task_metric["1"] = [round(x,6) for x in avg_cost[16:18].tolist()]
+    task_metric["2"] = [round(x,6) for x in avg_cost[19:24].tolist()]
 
     return task_metric
 
 
-def main():
-    model_path = '../logs/arch_hps_2023_0530_1637/arch_hps_e30.pth'
-    arch_path = 'arch_hps.json'
+def main(args):
+    yaml_path = find_files(args.logdir, '.yml')[0]
+    config = yaml_load(yaml_path)
+    arch_name = config['arch']['name']
+    arch = config['arch']['branch_points']
 
-    DEVICE = 'cuda'
-    TRAIN_DIR = 'E:/Dataset/nyu'
-
-    # get arch from json file
-    arch = load_arch(arch_path)
+    model_path = find_files(args.logdir, '.pth')[0]
+    print(arch_name, model_path, arch)
 
     # prepare model
     model = CoNALArch(arch).to(DEVICE)
@@ -57,10 +59,22 @@ def main():
     model.load_state_dict(torch.load(model_path))
 
     # prepare dataloaders
-    test_loader = get_loaders(TRAIN_DIR, stage='test')
+    test_loader = get_loaders(args.datadir, stage='test')
     task_metric = test(model, test_loader)
+
+    config["test"] = task_metric
+    config["size"] = size_model(model)
+
+    with open(yaml_path, 'w') as file:
+        yaml.dump(config, file)
+
     return task_metric
 
 if __name__ == '__main__':
-    task_metric = main()
+    parser = argparse.ArgumentParser("test")
+    parser.add_argument("--logdir", type=str, default='logs')
+    parser.add_argument("--datadir", type=str, default='E:/Dataset/nyu')
+    args = parser.parse_args()
+
+    task_metric = main(args)
     print(task_metric)

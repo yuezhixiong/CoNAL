@@ -87,11 +87,11 @@ class NYU(Dataset):
         return len(self.index_list)
 
 
-def get_loaders(datadir, batch_size=128, num_workers=16, pin_memory=True, stage='search'):
+def get_loaders(datadir, batch_size=64, num_workers=15, pin_memory=True, stage='search'):
     if stage == 'retrain':
         dataset = NYU(datadir, 'trainval')
         dataloader = DataLoader(dataset, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
-                          shuffle=True, drop_last=True, prefetch_factor=2)
+                          shuffle=True, drop_last=True, prefetch_factor=8, persistent_workers=True)
         return dataloader
 
     elif stage == 'search':
@@ -110,5 +110,5 @@ def get_loaders(datadir, batch_size=128, num_workers=16, pin_memory=True, stage=
     elif stage=='test':
         dataset = NYU(datadir, 'test')
         dataloader = DataLoader(dataset, batch_size, num_workers=num_workers, pin_memory=pin_memory, 
-                          shuffle=False, drop_last=False, prefetch_factor=1)
+                          shuffle=False, drop_last=False, prefetch_factor=1, persistent_workers=True)
         return dataloader

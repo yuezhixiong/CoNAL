@@ -156,8 +156,7 @@ class CoNALArch(NyuModel):
             else:
                 group[branch_point].append([i])
         self.group = group
-        group_num = len([l for l in group if l])
-        print('{} branchs:'.format(group_num), group)
+        print('branchs:', group)
 
         self.backbone = self.new_bb()
 

@@ -1,10 +1,10 @@
 arch:
-  name: hps
+  name: conal
   backbone: resnet50
   branch_points:
     '0': 5
     '1': 5
-    '2': 5
+    '2': 3
   
 hyper:
   lr: 0.0001

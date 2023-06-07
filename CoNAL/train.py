@@ -1,4 +1,4 @@
-import torch, os, sys, shutil
+import torch, os, argparse, shutil
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -10,13 +10,8 @@ from utils import *
 from tqdm import tqdm
 from dataset import get_loaders
 
-# Hyperparameters etc.
-TRAIN_DIR = 'E:/Dataset/nyu'
-LOG_DIR = 'logs'
-LOG_ON = True
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
 
 def train_fn(train_loader, model, weight_optim, num_epochs, logdir):
 
@@ -24,14 +19,14 @@ def train_fn(train_loader, model, weight_optim, num_epochs, logdir):
     scaler = torch.cuda.amp.GradScaler()
 
     num_batchs = len(train_loader)
-    avg_cost = torch.zeros([num_batchs, 24])
+    avg_cost = torch.zeros([num_epochs, 24])
 
-    for epoch_idx in range(num_epochs):
+    for epoch_idx in tqdm(range(num_epochs)):
         cost = torch.zeros(24)
         model.train()
         train_iter = iter(train_loader)
 
-        for batch_idx in tqdm(range(num_batchs)):
+        for batch_idx in range(num_batchs):
             train_data, train_label, train_depth, train_normal = next(train_iter)
             train_data, train_label = train_data.to(DEVICE), train_label.to(DEVICE)
             train_depth, train_normal = train_depth.to(DEVICE), train_normal.to(DEVICE)
@@ -75,14 +70,11 @@ def train_fn(train_loader, model, weight_optim, num_epochs, logdir):
         writer.add_scalar('train/With22', avg_cost[epoch_idx, 10], epoch_idx)
         writer.add_scalar('train/With68', avg_cost[epoch_idx, 11], epoch_idx)
 
-        if epoch_idx%10 == 0:
-            torch.save(model.state_dict(), os.path.join(logdir, '{}_e{}.pth'.format('checkpoint', epoch_idx)))
 
+def main(args):
 
-
-def main():
     # load model config
-    yaml_path = 'models/hps.yml'
+    yaml_path = 'models/{}.yml'.format(args.model)
     config = yaml_load(yaml_path)
     batch_size = config['hyper']['batch_size']
     num_epochs = config['hyper']['num_epochs']
@@ -90,14 +82,14 @@ def main():
     weight_decay = config['hyper']['weight_decay']
 
     # prepare dataloaders
-    train_loader = get_loaders(TRAIN_DIR, batch_size, stage='retrain')
+    train_loader = get_loaders(args.datadir, batch_size, stage='retrain')
 
     # get arch from json file
     arch_name = config['arch']['name']
     arch = config['arch']['branch_points']
 
     # prepare logger
-    logdir = create_logdir(LOG_DIR, arch_name) if LOG_ON else 'logs/debug'
+    logdir = create_logdir(args.logdir, arch_name)
     shutil.copy(yaml_path, logdir)
 
     # prepare model
@@ -114,4 +106,10 @@ def main():
 
     
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser("train")
+    parser.add_argument('--model', type=str, default='hps', help='model name')
+    parser.add_argument("--logdir", type=str, default='logs')
+    parser.add_argument("--datadir", type=str, default='E:/Dataset/nyu')
+    args = parser.parse_args()
+    
+    main(args)
